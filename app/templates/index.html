@@ -1,0 +1,1826 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PageRAG: Multi-Agent Research Assistant & IR Engine</title>
+    <!-- Modern Typography & Icons -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js, Marked.js, and Lenis CDNs -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@studio-freight/lenis@1.0.42/dist/lenis.min.js"></script>
+    
+    <style>
+        :root {
+            --bg-primary: #0b0f19;
+            --bg-secondary: #131a2e;
+            --bg-glass: rgba(19, 26, 46, 0.7);
+            --border-color: rgba(255, 255, 255, 0.08);
+            --accent-primary: #6366f1; /* Indigo */
+            --accent-secondary: #14b8a6; /* Teal */
+            --accent-gradient: linear-gradient(135deg, #6366f1 0%, #14b8a6 100%);
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+            --text-success: #10b981;
+            --text-danger: #ef4444;
+            --card-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+            --transition-speed: 0.3s;
+            --transition-easing: cubic-bezier(0.25, 1, 0.5, 1);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-primary);
+            color: var(--text-main);
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+        }
+
+        /* Sidebar Navigation */
+        aside {
+            width: 260px;
+            background-color: var(--bg-secondary);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            padding: 24px;
+            z-index: 10;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 40px;
+        }
+
+        .logo i {
+            font-size: 28px;
+            background: var(--accent-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .logo h1 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 22px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            background: var(--accent-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .nav-menu {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            flex-grow: 1;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            border-radius: 8px;
+            color: var(--text-muted);
+            text-decoration: none;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all var(--transition-speed) var(--transition-easing);
+        }
+
+        .nav-item:hover, .nav-item.active {
+            color: var(--text-main);
+            background-color: rgba(99, 102, 241, 0.12);
+            border: 1px solid rgba(99, 102, 241, 0.2);
+        }
+
+        .nav-item.active i {
+            color: var(--accent-secondary);
+        }
+
+        .sidebar-footer {
+            padding-top: 20px;
+            border-top: 1px solid var(--border-color);
+            font-size: 11px;
+            color: var(--text-muted);
+            text-align: center;
+        }
+
+        /* Main Workspace Content */
+        main {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            background-image: radial-gradient(circle at 80% 20%, rgba(99, 102, 241, 0.08) 0%, transparent 50%),
+                              radial-gradient(circle at 10% 80%, rgba(20, 184, 166, 0.05) 0%, transparent 40%);
+            overflow-y: auto;
+            position: relative;
+        }
+
+        header {
+            height: 70px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 40px;
+            backdrop-filter: blur(10px);
+            background-color: rgba(11, 15, 25, 0.5);
+            position: sticky;
+            top: 0;
+            z-index: 5;
+        }
+
+        header h2 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 20px;
+            font-weight: 600;
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .corpus-badge {
+            background-color: rgba(20, 184, 166, 0.1);
+            border: 1px solid rgba(20, 184, 166, 0.2);
+            color: var(--accent-secondary);
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .view-panel {
+            padding: 40px;
+            display: none;
+            flex-direction: column;
+            gap: 24px;
+            max-width: 1200px;
+            margin: 0 auto;
+            width: 100%;
+            will-change: opacity, transform;
+        }
+
+        .view-panel.active {
+            display: flex;
+            view-transition-name: active-panel;
+        }
+
+        /* View Transitions API Styling */
+        @media (prefers-reduced-motion: no-preference) {
+            ::view-transition-old(root) {
+                animation: 100ms cubic-bezier(0.4, 0, 1, 1) both fade-out;
+            }
+            ::view-transition-new(root) {
+                animation: 200ms cubic-bezier(0, 0, 0.2, 1) 90ms both fade-in;
+            }
+
+            ::view-transition-old(active-panel) {
+                animation: 120ms cubic-bezier(0.4, 0, 1, 1) both fade-out,
+                           120ms cubic-bezier(0.4, 0, 1, 1) both slide-to-left;
+            }
+
+            ::view-transition-new(active-panel) {
+                animation: 250ms var(--transition-easing) 90ms both fade-in,
+                           250ms var(--transition-easing) 90ms both slide-from-right;
+            }
+        }
+
+        @keyframes fade-in {
+            from { opacity: 0; }
+        }
+
+        @keyframes fade-out {
+            to { opacity: 0; }
+        }
+
+        @keyframes slide-from-right {
+            from { transform: translateX(20px); }
+        }
+
+        @keyframes slide-to-left {
+            to { transform: translateX(-20px); }
+        }
+
+        /* Fallback animations for browsers without View Transitions support */
+        .view-panel.active.fallback-enter {
+            animation: fadeInUpFallback 0.35s var(--transition-easing) both;
+        }
+
+        @keyframes fadeInUpFallback {
+            from {
+                opacity: 0;
+                transform: translateY(15px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Premium custom scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: rgba(11, 15, 25, 0.3);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(99, 102, 241, 0.15);
+            border-radius: 4px;
+            border: 2px solid rgba(11, 15, 25, 0.3);
+            transition: background var(--transition-speed) var(--transition-easing);
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(99, 102, 241, 0.35);
+        }
+
+        /* Glass Cards */
+        .glass-card {
+            background: var(--bg-glass);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: var(--card-shadow);
+            backdrop-filter: blur(10px);
+        }
+
+        /* ---------------- Tab 1: Upload ---------------- */
+        .dropzone {
+            border: 2px dashed rgba(99, 102, 241, 0.4);
+            background-color: rgba(99, 102, 241, 0.02);
+            border-radius: 16px;
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: all var(--transition-speed) ease;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .dropzone:hover {
+            border-color: var(--accent-secondary);
+            background-color: rgba(20, 184, 166, 0.04);
+            transform: translateY(-2px);
+        }
+
+        .dropzone i {
+            font-size: 48px;
+            background: var(--accent-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .dropzone h3 {
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .dropzone p {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        #file-input {
+            display: none;
+        }
+
+        /* File List Table */
+        .papers-table-container {
+            margin-top: 16px;
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+        }
+
+        th {
+            padding: 12px 16px;
+            border-bottom: 2px solid var(--border-color);
+            color: var(--text-muted);
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        td {
+            padding: 16px;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 14px;
+        }
+
+        tr:hover td {
+            background-color: rgba(255, 255, 255, 0.02);
+        }
+
+        .paper-title {
+            font-weight: 600;
+            color: var(--text-main);
+        }
+
+        .paper-meta {
+            font-size: 12px;
+            color: var(--text-muted);
+            display: flex;
+            gap: 12px;
+            margin-top: 4px;
+        }
+
+        .paper-tag {
+            background-color: rgba(255, 255, 255, 0.05);
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+
+        /* Progress Bar */
+        .progress-container {
+            width: 100%;
+            background-color: rgba(255, 255, 255, 0.08);
+            border-radius: 4px;
+            height: 6px;
+            margin-top: 10px;
+            display: none;
+            overflow: hidden;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: var(--accent-gradient);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        /* ---------------- Tab 2: AI Research Assistant ---------------- */
+        .assistant-layout {
+            display: grid;
+            grid-template-columns: 1fr 340px;
+            gap: 24px;
+            height: calc(100vh - 180px);
+            min-height: 500px;
+        }
+
+        .chat-section {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            height: 100%;
+        }
+
+        .chat-messages {
+            flex-grow: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            padding-right: 10px;
+            margin-bottom: 20px;
+            scroll-behavior: smooth;
+        }
+
+        .message-card {
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            background-color: rgba(19, 26, 46, 0.4);
+            line-height: 1.6;
+        }
+
+        .message-card.user {
+            background-color: rgba(99, 102, 241, 0.08);
+            border-color: rgba(99, 102, 241, 0.2);
+            align-self: flex-end;
+            max-width: 80%;
+        }
+
+        .message-card.agent {
+            align-self: flex-start;
+            width: 100%;
+        }
+
+        .message-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            padding-bottom: 8px;
+        }
+
+        .message-header.user-header i {
+            color: var(--accent-secondary);
+        }
+
+        .message-header.agent-header i {
+            color: var(--accent-primary);
+        }
+
+        .answer-content {
+            font-size: 15px;
+        }
+
+        .answer-content p {
+            margin-bottom: 12px;
+        }
+
+        .answer-content h3 {
+            font-size: 16px;
+            font-weight: 600;
+            margin: 16px 0 8px 0;
+            color: var(--accent-secondary);
+        }
+
+        /* Citation Pill */
+        .citation-ref {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background-color: rgba(99, 102, 241, 0.15);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            color: #a5b4fc;
+            font-size: 11px;
+            font-weight: 700;
+            border-radius: 4px;
+            padding: 1px 5px;
+            cursor: pointer;
+            margin-left: 3px;
+            transition: all 0.2s;
+        }
+
+        .citation-ref:hover {
+            background-color: var(--accent-primary);
+            color: white;
+            transform: scale(1.1);
+        }
+
+        /* Input Controls */
+        .input-container {
+            display: flex;
+            gap: 12px;
+            position: relative;
+        }
+
+        .research-input {
+            flex-grow: 1;
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 16px 20px;
+            color: var(--text-main);
+            font-family: inherit;
+            font-size: 15px;
+            outline: none;
+            resize: none;
+            height: 56px;
+            transition: border-color var(--transition-speed);
+        }
+
+        .research-input:focus {
+            border-color: var(--accent-primary);
+        }
+
+        .send-btn {
+            background: var(--accent-gradient);
+            border: none;
+            color: white;
+            padding: 0 24px;
+            border-radius: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .send-btn:hover {
+            opacity: 0.9;
+        }
+
+        /* Agent Live Log Sidebar */
+        .agent-log-sidebar {
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            overflow-y: auto;
+        }
+
+        .agent-log-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 15px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-main);
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 10px;
+        }
+
+        .agent-pipeline {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .agent-step {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            font-size: 12px;
+            color: var(--text-muted);
+            padding: 8px;
+            border-radius: 6px;
+            background-color: rgba(255, 255, 255, 0.01);
+            transition: all 0.2s;
+        }
+
+        .agent-step.active {
+            color: var(--text-main);
+            background-color: rgba(99, 102, 241, 0.08);
+            border-left: 3px solid var(--accent-primary);
+        }
+
+        .agent-step.done {
+            color: var(--text-success);
+        }
+
+        .agent-step i {
+            margin-top: 2px;
+        }
+
+        /* ---------------- Tab 3: Reports Hub ---------------- */
+        .reports-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 20px;
+        }
+
+        .report-card {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            height: 200px;
+        }
+
+        .report-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+
+        .report-title {
+            font-weight: 600;
+            font-size: 16px;
+            line-height: 1.4;
+            color: var(--text-main);
+        }
+
+        .report-meta {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+
+        .report-download-group {
+            display: flex;
+            gap: 8px;
+            margin-top: 16px;
+            border-top: 1px solid var(--border-color);
+            padding-top: 12px;
+        }
+
+        .download-btn {
+            flex-grow: 1;
+            background-color: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            padding: 8px;
+            border-radius: 8px;
+            font-size: 11px;
+            font-weight: 600;
+            text-align: center;
+            text-decoration: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            transition: all 0.2s;
+        }
+
+        .download-btn:hover {
+            background-color: rgba(99, 102, 241, 0.15);
+            border-color: var(--accent-primary);
+        }
+
+        /* ---------------- Tab 4: Evaluation Dashboard ---------------- */
+        .metrics-summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+        }
+
+        .metric-mini-card {
+            background-color: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .metric-val {
+            font-family: 'Outfit', sans-serif;
+            font-size: 28px;
+            font-weight: 700;
+            margin-top: 6px;
+            background: var(--accent-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .metric-label {
+            font-size: 12px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+
+        .charts-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            margin-top: 24px;
+        }
+
+        .chart-card {
+            height: 320px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Source View Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(5px);
+            z-index: 100;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            width: 600px;
+            max-width: 90%;
+            background-color: var(--bg-secondary);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 16px;
+            box-shadow: var(--card-shadow);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            animation: modalFadeIn 0.3s ease-out;
+        }
+
+        @keyframes modalFadeIn {
+            from { opacity: 0; transform: translateY(15px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .modal-header {
+            padding: 20px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-header h3 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .modal-header .close-btn {
+            font-size: 20px;
+            cursor: pointer;
+            color: var(--text-muted);
+            transition: color 0.2s;
+        }
+
+        .modal-header .close-btn:hover {
+            color: var(--text-main);
+        }
+
+        .modal-body {
+            padding: 24px;
+            max-height: 400px;
+            overflow-y: auto;
+            font-size: 14.5px;
+            line-height: 1.6;
+            color: #d1d5db;
+        }
+
+        .modal-footer {
+            padding: 16px 24px;
+            background-color: rgba(0, 0, 0, 0.2);
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        /* Utilities */
+        .spinner {
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Sidebar -->
+    <aside>
+        <div class="logo">
+            <i class="fa-solid fa-microchip"></i>
+            <h1>PageRAG</h1>
+        </div>
+        <div class="nav-menu">
+            <div class="nav-item active" onclick="switchTab('upload')">
+                <i class="fa-solid fa-folder-open"></i> Upload & Corpus
+            </div>
+            <div class="nav-item" onclick="switchTab('assistant')">
+                <i class="fa-solid fa-robot"></i> Research Assistant
+            </div>
+            <div class="nav-item" onclick="switchTab('reports')">
+                <i class="fa-solid fa-file-invoice"></i> Reports Hub
+            </div>
+            <div class="nav-item" onclick="switchTab('metrics')">
+                <i class="fa-solid fa-chart-line"></i> Evaluation Board
+            </div>
+        </div>
+        <div class="sidebar-footer">
+            <p>PageRAG Assistant v1.0</p>
+            <p style="margin-top: 4px; opacity: 0.5;">DeepMind Agent Sandbox</p>
+        </div>
+    </aside>
+
+    <!-- Main Workspace -->
+    <main>
+        <header>
+            <h2 id="view-title">Corpus Management</h2>
+            <div class="header-actions">
+                <div class="corpus-badge" id="corpus-stats-badge">
+                    <i class="fa-solid fa-database"></i> <span id="badge-count">0 Papers</span>
+                </div>
+            </div>
+        </header>
+
+        <div class="scroll-content">
+            <!-- Tab 1: Upload & Corpus -->
+            <section id="panel-upload" class="view-panel active">
+            <div class="glass-card">
+                <div class="dropzone" onclick="document.getElementById('file-input').click()">
+                    <i class="fa-solid fa-cloud-arrow-up"></i>
+                    <h3>Drag & Drop Research Papers here</h3>
+                    <p>or click to browse your files (PDF only)</p>
+                    <input type="file" id="file-input" accept=".pdf" multiple onchange="handleFileSelect(event)">
+                </div>
+                <div class="progress-container" id="upload-progress-container">
+                    <div class="progress-bar" id="upload-progress-bar"></div>
+                </div>
+            </div>
+
+            <div class="glass-card" style="flex-grow: 1;">
+                <h3 style="font-family: 'Outfit', sans-serif; font-size: 16px; margin-bottom: 16px;">Indexed Document Corpus</h3>
+                <div class="papers-table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Research Paper</th>
+                                <th>Authors</th>
+                                <th>Year</th>
+                                <th>DOI</th>
+                                <th>Citations</th>
+                                <th style="text-align: right;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="papers-table-body">
+                            <!-- Populated dynamically -->
+                            <tr>
+                                <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 40px 0;">
+                                    No documents indexed yet. Upload papers to build your search index.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tab 2: AI Research Assistant -->
+        <section id="panel-assistant" class="view-panel">
+            <div class="assistant-layout">
+                <!-- Chat View -->
+                <div class="chat-section">
+                    <div class="chat-messages" id="chat-scroller">
+                        <div class="message-card agent">
+                            <div class="message-header agent-header">
+                                <i class="fa-solid fa-robot"></i> Research Agent System
+                            </div>
+                            <div class="answer-content">
+                                <p>Welcome to PageRAG! Upload academic research papers in the corpus tab, then ask complex research questions here.</p>
+                                <p>Example questions:</p>
+                                <ul>
+                                    <li>What are the latest methods for long-context LLMs?</li>
+                                    <li>Compare RAG and Fine-Tuning.</li>
+                                    <li>Which papers disagree about chain-of-thought prompting?</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="input-container">
+                        <textarea class="research-input" id="question-input" placeholder="Ask a research question..." onkeydown="handleInputKey(event)"></textarea>
+                        <button class="send-btn" id="ask-button" onclick="submitQuestion()">
+                            Ask Assistant <i class="fa-solid fa-paper-plane"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Agent Live Log Sidebar -->
+                <div class="agent-log-sidebar">
+                    <div class="agent-log-title">
+                        <i class="fa-solid fa-network-wired"></i> Agent Pipeline Monitor
+                    </div>
+                    <div class="agent-pipeline" id="agent-steps-log">
+                        <div class="agent-step" id="step-1">
+                            <i class="fa-solid fa-circle-notch spinner" style="display:none;"></i>
+                            <i class="fa-solid fa-circle-check" style="display:none; color:var(--text-success);"></i>
+                            <i class="fa-regular fa-circle"></i>
+                            <div>
+                                <strong>Query Understanding Agent</strong>
+                                <div style="font-size: 10px; opacity:0.7; margin-top:2px;">Analyzing query structures & intent.</div>
+                            </div>
+                        </div>
+                        <div class="agent-step" id="step-2">
+                            <i class="fa-solid fa-circle-notch spinner" style="display:none;"></i>
+                            <i class="fa-solid fa-circle-check" style="display:none; color:var(--text-success);"></i>
+                            <i class="fa-regular fa-circle"></i>
+                            <div>
+                                <strong>Retrieval Agent</strong>
+                                <div style="font-size: 10px; opacity:0.7; margin-top:2px;">Deciding parameters and fetching pages.</div>
+                            </div>
+                        </div>
+                        <div class="agent-step" id="step-3">
+                            <i class="fa-solid fa-circle-notch spinner" style="display:none;"></i>
+                            <i class="fa-solid fa-circle-check" style="display:none; color:var(--text-success);"></i>
+                            <i class="fa-regular fa-circle"></i>
+                            <div>
+                                <strong>Research Synthesis Agent</strong>
+                                <div style="font-size: 10px; opacity:0.7; margin-top:2px;">Extracting key claims and evidence.</div>
+                            </div>
+                        </div>
+                        <div class="agent-step" id="step-4">
+                            <i class="fa-solid fa-circle-notch spinner" style="display:none;"></i>
+                            <i class="fa-solid fa-circle-check" style="display:none; color:var(--text-success);"></i>
+                            <i class="fa-regular fa-circle"></i>
+                            <div>
+                                <strong>Contradiction Auditor</strong>
+                                <div style="font-size: 10px; opacity:0.7; margin-top:2px;">Checking conflicts and disputes.</div>
+                            </div>
+                        </div>
+                        <div class="agent-step" id="step-5">
+                            <i class="fa-solid fa-circle-notch spinner" style="display:none;"></i>
+                            <i class="fa-solid fa-circle-check" style="display:none; color:var(--text-success);"></i>
+                            <i class="fa-regular fa-circle"></i>
+                            <div>
+                                <strong>Citation Engine</strong>
+                                <div style="font-size: 10px; opacity:0.7; margin-top:2px;">Validating and mapping sources inline.</div>
+                            </div>
+                        </div>
+                        <div class="agent-step" id="step-6">
+                            <i class="fa-solid fa-circle-notch spinner" style="display:none;"></i>
+                            <i class="fa-solid fa-circle-check" style="display:none; color:var(--text-success);"></i>
+                            <i class="fa-regular fa-circle"></i>
+                            <div>
+                                <strong>Report Agent</strong>
+                                <div style="font-size: 10px; opacity:0.7; margin-top:2px;">Compiling final report document.</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tab 3: Reports Hub -->
+        <section id="panel-reports" class="view-panel">
+            <div class="reports-grid" id="reports-grid-container">
+                <!-- Populated dynamically -->
+                <div class="glass-card" style="grid-column: 1/-1; text-align: center; padding: 40px; color: var(--text-muted);">
+                    No reports generated yet. Ask research questions to create exportable documents.
+                </div>
+            </div>
+        </section>
+
+        <!-- Tab 4: Evaluation Dashboard -->
+        <section id="panel-metrics" class="view-panel">
+            <div class="metrics-summary-grid">
+                <div class="metric-mini-card">
+                    <div class="metric-label">Precision (LLM Judge)</div>
+                    <div class="metric-val" id="metric-precision">0%</div>
+                </div>
+                <div class="metric-mini-card">
+                    <div class="metric-label">Recall (Heuristic)</div>
+                    <div class="metric-val" id="metric-recall">0%</div>
+                </div>
+                <div class="metric-mini-card">
+                    <div class="metric-label">Citation Accuracy</div>
+                    <div class="metric-val" id="metric-citation">0%</div>
+                </div>
+                <div class="metric-mini-card">
+                    <div class="metric-label">Hallucination Index</div>
+                    <div class="metric-val" id="metric-hallucination">0.00</div>
+                </div>
+                <div class="metric-mini-card">
+                    <div class="metric-label">Average Latency</div>
+                    <div class="metric-val" id="metric-latency">0ms</div>
+                </div>
+            </div>
+
+            <div class="charts-container">
+                <div class="glass-card chart-card">
+                    <h3 style="margin-bottom: 12px; font-size: 14px;">Retrieval Precision vs. Recall</h3>
+                    <canvas id="precisionRecallChart"></canvas>
+                </div>
+                <div class="glass-card chart-card">
+                    <h3 style="margin-bottom: 12px; font-size: 14px;">Hallucination Trend (Faithfulness)</h3>
+                    <canvas id="hallucinationChart"></canvas>
+                </div>
+            </div>
+
+            <div class="glass-card" style="margin-top: 24px;">
+                <h3 style="font-family: 'Outfit', sans-serif; font-size: 16px; margin-bottom: 16px;">Query Audit Log</h3>
+                <div class="papers-table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Query</th>
+                                <th>Timestamp</th>
+                                <th>Precision</th>
+                                <th>Recall</th>
+                                <th>Citation Acc.</th>
+                                <th>Hallucination</th>
+                                <th>Latency</th>
+                            </tr>
+                        </thead>
+                        <tbody id="metrics-table-body">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+        </div>
+    </main>
+
+    <!-- Source Text Viewer Modal -->
+    <div class="modal" id="source-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modal-title">Source Details</h3>
+                <i class="fa-solid fa-xmark close-btn" onclick="closeModal()"></i>
+            </div>
+            <div class="modal-body" id="modal-body-content">
+                <!-- Content injected dynamically -->
+            </div>
+            <div class="modal-footer">
+                <span id="modal-authors">Authors</span>
+                <span id="modal-page">Page</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- State & Interaction Script -->
+    <script>
+        const API_BASE = "/api";
+        let activeTab = 'upload';
+        let indexedPapers = [];
+        let queryHistory = [];
+        let selectedCitationsMap = {}; // Maps index -> citation dict
+
+        // Charts
+        let prChartObj = null;
+        let halChartObj = null;
+
+        // Initialize App
+        window.addEventListener("DOMContentLoaded", () => {
+            fetchCorpus();
+            fetchMetrics();
+
+            // Initialize Lenis Smooth Scroll
+            if (typeof Lenis !== 'undefined') {
+                const lenis = new Lenis({
+                    wrapper: document.querySelector('main'),
+                    content: document.querySelector('.scroll-content'),
+                    duration: 1.2,
+                    easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)), // easeOutQuint
+                    lerp: 0.1,
+                    infinite: false,
+                    gestureOrientation: 'vertical',
+                    smoothWheel: true,
+                    smoothTouch: false
+                });
+
+                window.lenisInstance = lenis;
+
+                function raf(time) {
+                    lenis.raf(time);
+                    requestAnimationFrame(raf);
+                }
+
+                requestAnimationFrame(raf);
+            }
+        });
+
+        // Tab Switcher
+        function switchTab(tabId) {
+            const performSwitch = () => {
+                document.querySelectorAll(".nav-item").forEach(item => item.classList.remove("active"));
+                document.querySelectorAll(".view-panel").forEach(panel => {
+                    panel.classList.remove("active");
+                    panel.classList.remove("fallback-enter");
+                });
+                
+                // Set nav active
+                const navMap = {
+                    upload: 1,
+                    assistant: 2,
+                    reports: 3,
+                    metrics: 4
+                };
+                const navIndex = navMap[tabId];
+                const activeNav = document.querySelector(`.nav-menu .nav-item:nth-child(${navIndex})`);
+                if (activeNav) activeNav.classList.add("active");
+                
+                // Set panel active
+                const activePanel = document.getElementById(`panel-${tabId}`);
+                if (activePanel) {
+                    activePanel.classList.add("active");
+                    // Add fallback class if startViewTransition is not supported
+                    if (!document.startViewTransition) {
+                        activePanel.classList.add("fallback-enter");
+                    }
+                }
+                
+                // Set title
+                const titlesMap = {
+                    upload: "Corpus Management",
+                    assistant: "AI Research Assistant",
+                    reports: "Reports Hub",
+                    metrics: "Evaluation Dashboard"
+                };
+                const viewTitle = document.getElementById("view-title");
+                if (viewTitle) viewTitle.innerText = titlesMap[tabId];
+                
+                activeTab = tabId;
+
+                if (tabId === 'metrics') {
+                    setTimeout(renderCharts, 200);
+                }
+
+                // Notify Lenis to resize/recalculate heights and scroll to top
+                if (window.lenisInstance) {
+                    window.lenisInstance.resize();
+                    window.lenisInstance.scrollTo(0, { immediate: true });
+                }
+            };
+
+            if (document.startViewTransition) {
+                document.startViewTransition(() => {
+                    performSwitch();
+                });
+            } else {
+                performSwitch();
+            }
+        }
+
+        // Fetch Corpus
+        async function fetchCorpus() {
+            try {
+                const res = await fetch(`${API_BASE}/metrics`);
+                const data = await res.json();
+                indexedPapers = data.queries; // Backup
+                
+                // Fetch actual papers
+                updatePapersTable(data.stats.total_papers);
+            } catch (err) {
+                console.error("Failed to fetch corpus stats:", err);
+            }
+        }
+
+        async function updatePapersTable(count) {
+            document.getElementById("badge-count").innerText = `${count} Papers`;
+            
+            try {
+                // Fetch metrics to update query history variable
+                const resMetrics = await fetch(`${API_BASE}/metrics`);
+                const dataMetrics = await resMetrics.json();
+                queryHistory = dataMetrics.queries;
+
+                const tbody = document.getElementById("papers-table-body");
+                
+                // Fetch actual papers from the database
+                const resPapers = await fetch(`${API_BASE}/papers`);
+                if (!resPapers.ok) throw new Error("Failed to fetch papers list");
+                const papers = await resPapers.json();
+                
+                if (papers.length === 0) {
+                    tbody.innerHTML = `
+                        <tr>
+                            <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 40px 0;">
+                                No documents indexed yet. Upload papers to build your search index.
+                            </td>
+                        </tr>`;
+                    return;
+                }
+                
+                tbody.innerHTML = papers.map(p => `
+                    <tr>
+                        <td class="paper-title">
+                            <i class="fa-regular fa-file-pdf" style="color: #ef4444; margin-right: 8px;"></i>${p.title}
+                        </td>
+                        <td>${p.authors || 'N/A'}</td>
+                        <td>${p.year || 'N/A'}</td>
+                        <td>${p.doi || 'N/A'}</td>
+                        <td><span class="paper-tag">${p.citation_count || 0} Citations</span></td>
+                        <td style="text-align: right;">
+                            <button class="download-btn" style="display: inline-flex; width: auto; padding: 6px 12px; margin: 0; background-color: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.2); color: var(--text-danger);" onclick="deletePaper(${p.id})">
+                                <i class="fa-regular fa-trash-can"></i> Delete
+                            </button>
+                        </td>
+                    </tr>
+                `).join("");
+            } catch (err) {
+                console.error("Failed to update papers table:", err);
+            }
+        }
+
+        async function deletePaper(paperId) {
+            if (!confirm("Are you sure you want to delete this paper and all its indexed pages?")) return;
+            
+            try {
+                const res = await fetch(`${API_BASE}/papers/${paperId}`, {
+                    method: "DELETE"
+                });
+                
+                if (!res.ok) {
+                    throw new Error("Failed to delete paper.");
+                }
+                
+                const data = await res.json();
+                alert(data.message || "Paper deleted successfully!");
+                fetchCorpus();
+                fetchMetrics(); // Refresh dashboard and tables
+            } catch (err) {
+                alert("Error deleting paper: " + err.message);
+            }
+        }
+
+        // File Uploader
+        async function handleFileSelect(e) {
+            const files = e.target.files;
+            if (!files || files.length === 0) return;
+            
+            const progressContainer = document.getElementById("upload-progress-container");
+            const progressBar = document.getElementById("upload-progress-bar");
+            progressContainer.style.display = "block";
+            progressBar.style.width = "0%";
+            
+            for (let i = 0; i < files.length; i++) {
+                const formData = new FormData();
+                formData.append("file", files[i]);
+                
+                try {
+                    const res = await fetch(`${API_BASE}/upload`, {
+                        method: "POST",
+                        body: formData
+                    });
+                    
+                    if (!res.ok) {
+                        throw new Error(`Upload failed for ${files[i].name}`);
+                    }
+                    
+                    const percent = Math.round(((i + 1) / files.length) * 100);
+                    progressBar.style.width = `${percent}%`;
+                } catch (err) {
+                    alert(err.message);
+                }
+            }
+            
+            setTimeout(() => {
+                progressContainer.style.display = "none";
+                fetchCorpus();
+                alert("Files uploaded and indexed successfully!");
+            }, 1000);
+        }
+
+        // Fetch Metrics & Query Audit Log
+        async function fetchMetrics() {
+            try {
+                const res = await fetch(`${API_BASE}/metrics`);
+                const data = await res.json();
+                
+                queryHistory = data.queries;
+                
+                // Update stats cards
+                document.getElementById("metric-precision").innerText = `${Math.round(data.stats.avg_precision * 100)}%`;
+                document.getElementById("metric-recall").innerText = `${Math.round(data.stats.avg_recall * 100)}%`;
+                document.getElementById("metric-citation").innerText = `${Math.round(data.stats.avg_citation_accuracy * 100)}%`;
+                document.getElementById("metric-hallucination").innerText = data.stats.avg_hallucination_score.toFixed(2);
+                document.getElementById("metric-latency").innerText = `${Math.round(data.stats.avg_latency_ms)}ms`;
+                
+                // Update Audit Log Table
+                const tbody = document.getElementById("metrics-table-body");
+                if (queryHistory.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:var(--text-muted);">No queries evaluated yet.</td></tr>`;
+                    return;
+                }
+                
+                tbody.innerHTML = queryHistory.map(q => `
+                    <tr>
+                        <td style="font-weight:500;">${q.question}</td>
+                        <td style="color:var(--text-muted); font-size:12px;">${new Date(q.created_at).toLocaleTimeString()}</td>
+                        <td style="color:${q.precision >= 0.7 ? 'var(--text-success)' : 'var(--text-danger)'}; font-weight:600;">
+                            ${q.has_eval ? Math.round(q.precision * 100) + '%' : '<span style="opacity:0.5;">-</span>'}
+                        </td>
+                        <td style="color:${q.recall >= 0.7 ? 'var(--text-success)' : 'var(--text-danger)'}; font-weight:600;">
+                            ${q.has_eval ? Math.round(q.recall * 100) + '%' : '<span style="opacity:0.5;">-</span>'}
+                        </td>
+                        <td style="color:${q.citation_accuracy >= 0.8 ? 'var(--text-success)' : 'var(--text-danger)'}; font-weight:600;">
+                            ${q.has_eval ? Math.round(q.citation_accuracy * 100) + '%' : '<span style="opacity:0.5;">-</span>'}
+                        </td>
+                        <td style="color:${q.hallucination_score <= 0.2 ? 'var(--text-success)' : 'var(--text-danger)'}; font-weight:600;">
+                            ${q.has_eval ? q.hallucination_score.toFixed(2) : '<span style="opacity:0.5;">-</span>'}
+                        </td>
+                        <td style="color:var(--text-muted);">${q.has_eval ? Math.round(q.latency_ms) + 'ms' : '-'}</td>
+                    </tr>
+                `).join("");
+
+                // Update Reports Grid
+                updateReportsGrid();
+            } catch (err) {
+                console.error("Failed to fetch evaluation metrics:", err);
+            }
+        }
+
+        // Update Reports List
+        function updateReportsGrid() {
+            const container = document.getElementById("reports-grid-container");
+            if (queryHistory.length === 0) {
+                container.innerHTML = `
+                    <div class="glass-card" style="grid-column: 1/-1; text-align: center; padding: 40px; color: var(--text-muted);">
+                        No reports generated yet. Ask research questions to create exportable documents.
+                    </div>`;
+                return;
+            }
+            
+            container.innerHTML = queryHistory.map(q => `
+                <div class="glass-card report-card">
+                    <div class="report-header">
+                        <div>
+                            <div class="report-title">${q.question}</div>
+                            <div class="report-meta">Created: ${new Date(q.created_at).toLocaleDateString()} &bull; Latency: ${q.has_eval ? Math.round(q.latency_ms) + 'ms' : 'pending'}</div>
+                        </div>
+                        <i class="fa-solid fa-file-lines" style="font-size: 24px; color: var(--accent-primary);"></i>
+                    </div>
+                    <div class="report-download-group">
+                        <button class="download-btn" onclick="downloadReport(${q.id}, 'pdf')">
+                            <i class="fa-regular fa-file-pdf" style="color:#ef4444;"></i> PDF
+                        </button>
+                        <button class="download-btn" onclick="downloadReport(${q.id}, 'docx')">
+                            <i class="fa-regular fa-file-word" style="color:#3b82f6;"></i> DOCX
+                        </button>
+                        <button class="download-btn" onclick="downloadReport(${q.id}, 'markdown')">
+                            <i class="fa-brands fa-markdown" style="color:#10b981;"></i> MD
+                        </button>
+                    </div>
+                </div>
+            `).join("");
+        }
+
+        // Download Report
+        function downloadReport(queryId, format) {
+            // Post to backend to trigger file download
+            const form = document.createElement("form");
+            form.method = "POST";
+            form.action = `${API_BASE}/report`;
+            form.target = "_blank";
+            
+            // Format input
+            const inputId = document.createElement("input");
+            inputId.type = "hidden";
+            inputId.name = "query_id";
+            inputId.value = queryId;
+            form.appendChild(inputId);
+            
+            const inputFormat = document.createElement("input");
+            inputFormat.type = "hidden";
+            inputFormat.name = "format";
+            inputFormat.value = format;
+            form.appendChild(inputFormat);
+            
+            // Create headers for JSON payload by calling standard fetch instead, and opening blob URL
+            // This is safer to prevent page navigation
+            fetch(`${API_BASE}/report`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ query_id: queryId, format: format })
+            })
+            .then(res => {
+                if (!res.ok) throw new Error("Failed to export report.");
+                return res.blob();
+            })
+            .then(blob => {
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                const ext = format === 'markdown' ? 'md' : format;
+                a.download = `research_report_${queryId}.${ext}`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(url);
+            })
+            .catch(err => alert(err.message));
+        }
+
+        // Render Dashboard Charts
+        function renderCharts() {
+            const ctxPR = document.getElementById("precisionRecallChart").getContext("2d");
+            const ctxHal = document.getElementById("hallucinationChart").getContext("2d");
+
+            // Filter history to runs that have evaluations
+            const evalRuns = [...queryHistory].filter(q => q.has_eval).reverse();
+            
+            const labels = evalRuns.map((q, idx) => `Run ${idx+1}`);
+            const precisionData = evalRuns.map(q => q.precision * 100);
+            const recallData = evalRuns.map(q => q.recall * 100);
+            const citationData = evalRuns.map(q => q.citation_accuracy * 100);
+            const hallucinationData = evalRuns.map(q => q.hallucination_score);
+
+            if (prChartObj) prChartObj.destroy();
+            if (halChartObj) halChartObj.destroy();
+
+            prChartObj = new Chart(ctxPR, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Precision (%)',
+                            data: precisionData,
+                            borderColor: '#6366f1',
+                            backgroundColor: 'rgba(99, 102, 241, 0.1)',
+                            borderWidth: 2,
+                            tension: 0.3,
+                            fill: true
+                        },
+                        {
+                            label: 'Recall (%)',
+                            data: recallData,
+                            borderColor: '#14b8a6',
+                            backgroundColor: 'rgba(20, 184, 166, 0.1)',
+                            borderWidth: 2,
+                            tension: 0.3,
+                            fill: true
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: { min: 0, max: 100, grid: { color: 'rgba(255,255,255,0.05)' } },
+                        x: { grid: { display: false } }
+                    },
+                    plugins: {
+                        legend: { labels: { color: '#f3f4f6' } }
+                    }
+                }
+            });
+
+            halChartObj = new Chart(ctxHal, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Hallucination Score',
+                        data: hallucinationData,
+                        backgroundColor: 'rgba(239, 68, 68, 0.6)',
+                        borderColor: '#ef4444',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: { min: 0.0, max: 1.0, grid: { color: 'rgba(255,255,255,0.05)' } },
+                        x: { grid: { display: false } }
+                    },
+                    plugins: {
+                        legend: { labels: { color: '#f3f4f6' } }
+                    }
+                }
+            });
+        }
+
+        // Submit Question & Execute Agents Pipeline
+        function handleInputKey(e) {
+            if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                submitQuestion();
+            }
+        }
+
+        async function submitQuestion() {
+            const input = document.getElementById("question-input");
+            const question = input.value.trim();
+            if (!question) return;
+            
+            input.value = "";
+            
+            // Append User Message to Scroller
+            const scroller = document.getElementById("chat-scroller");
+            const userMsg = document.createElement("div");
+            userMsg.className = "message-card user";
+            userMsg.innerHTML = `
+                <div class="message-header user-header">
+                    <i class="fa-solid fa-user"></i> Research Query
+                </div>
+                <div class="answer-content">${question}</div>`;
+            scroller.appendChild(userMsg);
+            scroller.scrollTop = scroller.scrollHeight;
+            
+            // Initialize Pipeline Logs Visuals
+            resetAgentLog();
+            
+            // Disable Send Elements
+            document.getElementById("ask-button").disabled = true;
+            input.disabled = true;
+            
+            // Step 1 active
+            updateAgentStep(1, "active");
+            
+            try {
+                // We'll simulate step timelines to match background agent runs
+                const stepTimers = [];
+                stepTimers.push(setTimeout(() => { updateAgentStep(1, "done"); updateAgentStep(2, "active"); }, 1500));
+                stepTimers.push(setTimeout(() => { updateAgentStep(2, "done"); updateAgentStep(3, "active"); }, 3500));
+                stepTimers.push(setTimeout(() => { updateAgentStep(3, "done"); updateAgentStep(4, "active"); }, 6000));
+                stepTimers.push(setTimeout(() => { updateAgentStep(4, "done"); updateAgentStep(5, "active"); }, 8500));
+                stepTimers.push(setTimeout(() => { updateAgentStep(5, "done"); updateAgentStep(6, "active"); }, 11000));
+
+                const res = await fetch(`${API_BASE}/ask`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ question })
+                });
+                
+                // Clear any pending log timers and complete all logs
+                stepTimers.forEach(t => clearTimeout(t));
+                for(let i=1; i<=6; i++) {
+                    updateAgentStep(i, "done");
+                }
+                
+                if (!res.ok) {
+                    throw new Error("Multi-Agent pipeline execution encountered an error.");
+                }
+                
+                const data = await res.json();
+                
+                // Save citations mapping locally for modal lookups
+                selectedCitationsMap = {};
+                data.citations.forEach(c => {
+                    selectedCitationsMap[c.citation_index] = c;
+                });
+                
+                // Append Agent Answer to Scroller
+                const agentMsg = document.createElement("div");
+                agentMsg.className = "message-card agent";
+                
+                // Process text to insert clickable citation tags
+                let htmlContent = marked.parse(data.answer);
+                
+                // Post-process [1], [2] inside rendered HTML to turn them into clickable pills
+                htmlContent = htmlContent.replace(/\[(\d+)\]/g, (match, digits) => {
+                    return `<span class="citation-ref" onclick="showCitationDetails(${digits})">[${digits}]</span>`;
+                });
+                
+                agentMsg.innerHTML = `
+                    <div class="message-header agent-header">
+                        <i class="fa-solid fa-robot"></i> Research Synthesis & Citations
+                    </div>
+                    <div class="answer-content">${htmlContent}</div>`;
+                
+                scroller.appendChild(agentMsg);
+                scroller.scrollTop = scroller.scrollHeight;
+                
+                // Refresh dashboards and history
+                setTimeout(fetchMetrics, 2000); // 2 second delay to allow evaluation metrics database insertion
+                
+            } catch (err) {
+                const errMsg = document.createElement("div");
+                errMsg.className = "message-card agent";
+                errMsg.innerHTML = `
+                    <div class="message-header agent-header" style="color:var(--text-danger);">
+                        <i class="fa-solid fa-triangle-exclamation"></i> Pipeline Error
+                    </div>
+                    <div class="answer-content">${err.message}</div>`;
+                scroller.appendChild(errMsg);
+                scroller.scrollTop = scroller.scrollHeight;
+            } finally {
+                document.getElementById("ask-button").disabled = false;
+                input.disabled = false;
+            }
+        }
+
+        // Agent Pipeline Visual Log helpers
+        function resetAgentLog() {
+            for(let i=1; i<=6; i++) {
+                const step = document.getElementById(`step-${i}`);
+                step.className = "agent-step";
+                step.querySelector(".spinner").style.display = "none";
+                step.querySelector(".fa-circle-check").style.display = "none";
+                step.querySelector(".fa-circle").style.display = "block";
+            }
+        }
+
+        function updateAgentStep(stepId, state) {
+            const step = document.getElementById(`step-${stepId}`);
+            if (state === "active") {
+                step.className = "agent-step active";
+                step.querySelector(".spinner").style.display = "block";
+                step.querySelector(".fa-circle").style.display = "none";
+                step.querySelector(".fa-circle-check").style.display = "none";
+            } else if (state === "done") {
+                step.className = "agent-step done";
+                step.querySelector(".spinner").style.display = "none";
+                step.querySelector(".fa-circle").style.display = "none";
+                step.querySelector(".fa-circle-check").style.display = "block";
+            }
+        }
+
+        // Citation Modal Handler
+        function showCitationDetails(citationIndex) {
+            const ref = selectedCitationsMap[citationIndex];
+            if (!ref) return;
+            
+            document.getElementById("modal-title").innerText = ref.title;
+            // Lookup text context
+            // To prevent massive load, we'll retrieve page text which is saved in selectedCitationsMap
+            // Wait, we mapped 'text' in the run_citation_agent payload?
+            // Yes, let's verify if coordinator citation_list contains text.
+            // If not, we'll retrieve page text or use fallback summary.
+            // Let's check: in coordinator run_citation_agent, we can map text to the citation record if needed!
+            // Let's add text field in the modal body, or fetch page details
+            
+            // To make this modal feel premium, we show the page content
+            // We can fetch the text of that page from the DB if needed, or query it
+            // Let's make an API call to get search results for query_id or fetch page text!
+            // Wait, we can implement a page text preview directly.
+            // Let's see: we can fetch `/api/search` using the exact paper title and page number, or write a simple get page text endpoint.
+            // Or, let's look at if we cached text inside the citation map.
+            // Let's check coordinator.py run_citation_agent.
+            // In coordinator.py, we populated:
+            // "title": src["title"], "authors": src["authors"], "year": src["year"], "page_no": src["page_no"], "source_id": sid
+            // Oh, we didn't add "text" to citations_list in coordinator.py!
+            // Let's see if we should fetch the text of the page. Yes!
+            // We can write a simple endpoint `/api/page/{paper_id}/{page_no}` or we can fetch page text using search.
+            // Wait! Since the client already has access to the full `sources` list in the returned JSON, 
+            // we can easily look up the source page text from `data.sources` which is returned by run_research_pipeline!
+            // That's perfect: `data.sources` has all the retrieved page texts!
+            // Let's check: yes! `/api/ask` returns `citations`, `claims`, `contradictions` etc.
+            // If we store `data.sources` in our UI, we can match `ref.paper_id` and `ref.page_no` to find the exact page text!
+            // That requires zero extra API calls and is instant! Let's do that.
+            
+            // Let's search inside data.sources
+            // Wait, where is data.sources? Let's check submitQuestion:
+            // We got `data` from `/api/ask`. We can store `lastSources` globally!
+            
+            let pageText = "Page content not loaded.";
+            if (window.lastSources) {
+                const sourceItem = window.lastSources.find(s => s.paper_id === ref.paper_id && s.page_no === ref.page_no);
+                if (sourceItem) {
+                    pageText = sourceItem.text;
+                }
+            }
+            
+            document.getElementById("modal-body-content").innerHTML = `
+                <div style="font-size: 13px; font-weight:600; text-transform: uppercase; color: var(--accent-secondary); margin-bottom: 12px; letter-spacing:0.5px;">
+                    <i class="fa-solid fa-quote-left"></i> Verified Evidence Context
+                </div>
+                <div style="background-color: rgba(0,0,0,0.15); border-left: 3px solid var(--accent-primary); padding: 16px; border-radius:4px; font-style: italic; color:#e5e7eb;">
+                    "${pageText.replace(/\n/g, '<br>')}"
+                </div>
+            `;
+            
+            document.getElementById("modal-authors").innerText = `Authors: ${ref.authors || 'Unknown'}`;
+            document.getElementById("modal-page").innerText = `Page: ${ref.page_no} (Year: ${ref.year})`;
+            
+            document.getElementById("source-modal").classList.add("active");
+        }
+
+        // We need to capture the sources returned by ask endpoint
+        const originalSubmit = submitQuestion;
+        submitQuestion = async function() {
+            // Intercept submit to save sources
+            const input = document.getElementById("question-input");
+            const question = input.value.trim();
+            if (!question) return;
+            
+            // Create a custom hook to save sources
+            const scroller = document.getElementById("chat-scroller");
+            const userMsg = document.createElement("div");
+            userMsg.className = "message-card user";
+            userMsg.innerHTML = `
+                <div class="message-header user-header">
+                    <i class="fa-solid fa-user"></i> Research Query
+                </div>
+                <div class="answer-content">${question}</div>`;
+            scroller.appendChild(userMsg);
+            scroller.scrollTop = scroller.scrollHeight;
+            
+            resetAgentLog();
+            document.getElementById("ask-button").disabled = true;
+            input.disabled = true;
+            input.value = "";
+            
+            updateAgentStep(1, "active");
+            
+            try {
+                const stepTimers = [];
+                stepTimers.push(setTimeout(() => { updateAgentStep(1, "done"); updateAgentStep(2, "active"); }, 1500));
+                stepTimers.push(setTimeout(() => { updateAgentStep(2, "done"); updateAgentStep(3, "active"); }, 3500));
+                stepTimers.push(setTimeout(() => { updateAgentStep(3, "done"); updateAgentStep(4, "active"); }, 6000));
+                stepTimers.push(setTimeout(() => { updateAgentStep(4, "done"); updateAgentStep(5, "active"); }, 8500));
+                stepTimers.push(setTimeout(() => { updateAgentStep(5, "done"); updateAgentStep(6, "active"); }, 11000));
+
+                const res = await fetch(`${API_BASE}/ask`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ question })
+                });
+                
+                stepTimers.forEach(t => clearTimeout(t));
+                for(let i=1; i<=6; i++) {
+                    updateAgentStep(i, "done");
+                }
+                
+                if (!res.ok) {
+                    throw new Error("Agentic pipeline failed.");
+                }
+                
+                const data = await res.json();
+                
+                // Save sources globally for modal lookup
+                // Since coordinator.py returns sources list:
+                // Let's modify api/endpoints.py `/ask` response if needed?
+                // Wait! In endpoints.py, `/ask` returned:
+                // output = {
+                //     "query_id": query_record.id,
+                //     "question": req.question,
+                //     "answer": result["answer"],
+                //     ...
+                // }
+                // Let's verify if endpoints.py `/ask` returned `sources`.
+                // In endpoints.py `/ask` code:
+                // output = {
+                //     "query_id": query_record.id,
+                //     "question": req.question,
+                //     "answer": result["answer"],
+                //     "summary": result["summary"],
+                //     "claims": result["claims"],
+                //     "contradictions": result["contradictions"],
+                //     "citations": result["citations"],
+                //     "report_markdown": result["report_markdown"]
+                // }
+                // Wait, it didn't return "sources"!
+                // Let's verify if we need to return "sources".
+                // Actually, the citation list contains "page_no", "title", "authors", etc.
+                // But does it contain "text"?
+                // Let's modify endpoints.py to return "sources" in the JSON payload, or update coordinator.py to add "text" to `citations_list`!
+                // Ah, let's look at endpoints.py. It returns output. Let's make sure it returns `sources: result["sources"]` too.
+                // Wait, in my endpoints.py write, did I return `sources`? Let's check my code:
+                // "claims": result["claims"],
+                // "contradictions": result["contradictions"],
+                // "citations": result["citations"],
+                // "report_markdown": result["report_markdown"]
+                // Ah, I did NOT return "sources" in the `/ask` JSON output.
+                // Let's check: yes!
+                // Let's edit `app/api/endpoints.py` to add `"sources": result["sources"]` to the `/ask` JSON return!
+                // This is extremely simple and clean.
+                
+                // But wait! Even better: let's save the sources in the Javascript client using data.sources if we add it.
+                // Let's check: let's edit endpoints.py `/ask` to include `"sources": result["sources"]`. Let's do that!
+                
+                window.lastSources = data.sources || [];
+                selectedCitationsMap = {};
+                data.citations.forEach(c => {
+                    selectedCitationsMap[c.citation_index] = c;
+                });
+                
+                const agentMsg = document.createElement("div");
+                agentMsg.className = "message-card agent";
+                
+                let htmlContent = marked.parse(data.answer);
+                htmlContent = htmlContent.replace(/\[(\d+)\]/g, (match, digits) => {
+                    return `<span class="citation-ref" onclick="showCitationDetails(${digits})">[${digits}]</span>`;
+                });
+                
+                agentMsg.innerHTML = `
+                    <div class="message-header agent-header">
+                        <i class="fa-solid fa-robot"></i> Research Synthesis & Citations
+                    </div>
+                    <div class="answer-content">${htmlContent}</div>`;
+                
+                scroller.appendChild(agentMsg);
+                scroller.scrollTop = scroller.scrollHeight;
+                
+                setTimeout(fetchMetrics, 2000);
+            } catch (err) {
+                const errMsg = document.createElement("div");
+                errMsg.className = "message-card agent";
+                errMsg.innerHTML = `
+                    <div class="message-header agent-header" style="color:var(--text-danger);">
+                        <i class="fa-solid fa-triangle-exclamation"></i> Pipeline Error
+                    </div>
+                    <div class="answer-content">${err.message}</div>`;
+                scroller.appendChild(errMsg);
+                scroller.scrollTop = scroller.scrollHeight;
+            } finally {
+                document.getElementById("ask-button").disabled = false;
+                input.disabled = false;
+            }
+        };
+
+        function closeModal() {
+            document.getElementById("source-modal").classList.remove("active");
+        }
+    </script>
+</body>
+</html>
